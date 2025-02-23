@@ -1,0 +1,194 @@
+
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Canvas Game</title>
+  <style>
+    canvas {
+      background-color: #000;
+    }
+
+    #spawn-ball {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      background-color: #0f0;
+      padding: 10px;  
+      cursor: pointer;
+    }
+  </style>
+</head>
+
+<body>
+  <canvas id="playField" width="800" height="800"></canvas>
+  <div id="spawn-ball">Add Ball</div>
+  <script>
+    const playField = document.getElementById('playField');
+    const ctx = playField.getContext('2d'); // createCircle, createRectangle, createTriangle, createLine
+
+    const MULTIPLIER = 10000;
+
+    const FIELD_WIDTH = 800;
+    const FIELD_HEIGHT = 800;
+    const ballSize = 7;
+    const pegSize = 4;
+    const gForce = multiply(0.2);   // playing around with this is going to tell us how fast the ball reaches the ground
+    const xResistance = 0.4;
+    const yResistance = 0.8;
+    let activeBalls = [];
+
+    const pegs = [];  // obstacles array
+    const collectors = [];
+
+    function multiply(value) {
+      return value * MULTIPLIER;   // to avoid precision errors we are converting it into integer numbers
+    }
+
+    function divide(value) {
+      return Math.floor(value / MULTIPLIER);  // we floor numbers in order to completely avoid errors
+    }
+
+    // Create obstacles in a pyramid shape
+    const pyramidRows = 16;
+    for (let row = 2; row < pyramidRows; row++) { // row = 2 as the first row is deleted
+      const pegCount = row + 1; // 3
+      const yPos = 0 + row * 35;      // over here we are calculating the different values of X and Y  
+      const gap = 36;
+      for (let col = 0; col < pegCount; col++) {
+        const xPos = FIELD_WIDTH / 2 - gap * (row / 2 - col);
+        // as we are forming a pyramid kind of structure
+        
+        // 800/2-36*(2/2-0) = 800/2-36*1 for the first row
+        
+        pegs.push({ x: multiply(xPos), y: multiply(yPos), radius: pegSize });
+         // we are calculating and storing all the required stuff in an array 
+      }
+    }
+
+    // Create sinks at the bottom as rectangles
+    const collectorWidth = 36;
+    const TOTAL_COLLECTORS = 15;
+    for (let i = 0; i < TOTAL_COLLECTORS; i++) {
+      const xPos = FIELD_WIDTH / 2 + (i - 7.5) * collectorWidth + pegSize;
+      const yPos = FIELD_HEIGHT - 240;
+      const rectWidth = collectorWidth;
+      const rectHeight = rectWidth;
+      collectors.push({ x: xPos, y: yPos, width: rectWidth, height: rectHeight });
+    }
+
+    class Sphere {
+      constructor(x, y, radius, color) {
+        this.x = x;
+        this.y = y;
+        this.radius = radius;
+        this.color = color;
+        this.velocityX = 0;
+        this.velocityY = 0;
+      }
+
+      render() {
+        ctx.beginPath();
+        ctx.arc(divide(this.x), divide(this.y), this.radius, 0, Math.PI * 2);
+        ctx.fillStyle = this.color;
+        ctx.fill();
+        ctx.closePath();
+      }
+
+      move() {
+    // gravity kicks in, pulling it down
+    this.velocityY += gForce;
+
+    // update pos based on current speed
+    this.x += this.velocityX; // move side
+    this.y += this.velocityY; 
+
+    // check if it hits any pegs
+    pegs.forEach(peg => {
+        // calc how far it is from the peg
+        const dist = Math.hypot(this.x - peg.x, this.y - peg.y);
+
+        // if they're touching
+        if (dist < multiply(this.radius + peg.radius)) {
+            // figuring out the angle of the hit
+            const angle = Math.atan2(this.y - peg.y, this.x - peg.x);
+
+            // bounce off by updating speed & dir
+            const speed = Math.sqrt(this.velocityX ** 2 + this.velocityY ** 2);
+            this.velocityX = Math.cos(angle) * speed * xResistance; // reduce sideways speed
+            this.velocityY = Math.sin(angle) * speed * yResistance; // reduce veart speed
+
+            // nudge it out so it doesn’t stick
+            const overlap = this.radius + peg.radius - divide(dist);
+            this.x += multiply(Math.cos(angle) * overlap); 
+            this.y += multiply(Math.sin(angle) * overlap); 
+        }
+    });
+}
+
+        });
+
+        // Collision with sinks
+        collectors.forEach(collector => {
+          if (
+            divide(this.x) > collector.x - collector.width / 2 &&
+            divide(this.x) < collector.x + collector.width / 2 &&
+            divide(this.y) + this.radius > collector.y - collector.height / 2
+          ) {
+            this.velocityX = 0;
+            this.velocityY = 0;
+          }
+        });
+      }
+    }
+
+    const startingBall = new Sphere(multiply(FIELD_WIDTH / 2 + 23), multiply(50), ballSize, 'red');
+    activeBalls.push(startingBall);
+
+    function drawPegs() {
+      ctx.fillStyle = 'white';
+      pegs.forEach(peg => {
+        ctx.beginPath();
+        ctx.arc(divide(peg.x), divide(peg.y), peg.radius, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.closePath();
+      });
+    }
+
+    function drawCollectors() {
+      ctx.fillStyle = 'green';
+      for (let i = 0; i < collectors.length; i++) {
+        const collector = collectors[i];
+        ctx.fillRect(collector.x, collector.y - collector.height / 2, collector.width - pegSize * 2, collector.height);
+      }
+    }
+
+    function spawnBall() {
+      const newBall = new Sphere(multiply(FIELD_WIDTH / 2 + 13), multiply(50), ballSize, 'red');
+      activeBalls.push(newBall);
+    }
+
+    document.getElementById('spawn-ball').addEventListener('click', spawnBall);
+
+    function renderScene() {
+      ctx.clearRect(0, 0, FIELD_WIDTH, FIELD_HEIGHT);
+      drawPegs();
+      drawCollectors();
+      activeBalls.forEach(ball => {
+        ball.render();
+        ball.move();
+      });
+    }
+
+    function startAnimation() {
+      renderScene();
+      requestAnimationFrame(startAnimation);
+    }
+
+    startAnimation();
+  </script>
+</body>
+
+</html>
